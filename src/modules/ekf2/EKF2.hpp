@@ -330,6 +330,23 @@ private:
 	uORB::PublicationMulti<estimator_bias3d_s> _estimator_ev_pos_bias_pub{ORB_ID(estimator_ev_pos_bias)};
 #endif // CONFIG_EKF2_EXTERNAL_VISION
 
+#if defined(CONFIG_EKF2_EXTERNAL_RADAR)
+	uORB::PublicationMulti<estimator_aid_source1d_s> _estimator_aid_src_er_hgt_pub {ORB_ID(estimator_aid_src_er_hgt)};
+	uORB::PublicationMulti<estimator_aid_source2d_s> _estimator_aid_src_er_pos_pub{ORB_ID(estimator_aid_src_er_pos)};
+	uORB::PublicationMulti<estimator_aid_source2d_s> _estimator_aid_src_er_vel_pub{ORB_ID(estimator_aid_src_er_vel)};
+	uORB::PublicationMulti<estimator_aid_source1d_s> _estimator_aid_src_er_yaw_pub{ORB_ID(estimator_aid_src_er_yaw)};
+	hrt_abstime _status_er_hgt_pub_last{0};
+	hrt_abstime _status_er_pos_pub_last{0};
+	hrt_abstime _status_er_vel_pub_last{0};
+	hrt_abstime _status_er_yaw_pub_last{0};
+
+	matrix::Vector3f _last_er_bias_published{};
+
+	uORB::Subscription _er_odom_sub{ORB_ID(vehicle_radar_odometry)};
+
+	uORB::PublicationMulti<estimator_bias3d_s> _estimator_er_pos_bias_pub{ORB_ID(estimator_er_pos_bias)};
+#endif // CONFIG_EKF2_EXTERNAL_RADAR
+
 #if defined(CONFIG_EKF2_AUXVEL)
 	uORB::Subscription _landing_target_pose_sub {ORB_ID(landing_target_pose)};
 

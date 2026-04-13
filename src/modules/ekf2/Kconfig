@@ -76,6 +76,13 @@ depends on MODULES_EKF2
 	---help---
 		EKF2 external vision (EV) fusion support.
 
+menuconfig EKF2_EXTERNAL_RADAR
+depends on MODULES_EKF2
+        bool "external radar (ER) fusion support"
+        default y
+	---help---
+		EKF2 external radar (ER) fusion support.
+
 menuconfig EKF2_GNSS
 depends on MODULES_EKF2
 	bool "GNSS fusion support"

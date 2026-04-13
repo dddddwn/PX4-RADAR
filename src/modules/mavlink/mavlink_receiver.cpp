@@ -184,6 +184,10 @@ MavlinkReceiver::handle_message(mavlink_message_t *msg)
 		handle_message_odometry(msg);
 		break;
 
+	case MAVLINK_MSG_ID_RADAR_ODOMETRY:
+		handle_message_radar_odometry(msg);
+		break;
+
 	case MAVLINK_MSG_ID_SET_GPS_GLOBAL_ORIGIN:
 		handle_message_set_gps_global_origin(msg);
 		break;
@@ -1944,6 +1948,55 @@ MavlinkReceiver::handle_message_trajectory_representation_bezier(mavlink_message
 
 	trajectory_bezier.bezier_order = math::min(trajectory.valid_points, vehicle_trajectory_bezier_s::NUMBER_POINTS);
 	_trajectory_bezier_pub.publish(trajectory_bezier);
+}
+
+void
+MavlinkReceiver::handle_message_radar_odometry(mavlink_message_t *msg)
+{
+	mavlink_radar_odometry_t odom_in;
+	mavlink_msg_radar_odometry_decode(msg, &odom_in);
+
+	// fill vehicle_odometry from Mavlink ODOMETRY
+	vehicle_odometry_s odom{vehicle_odometry_empty};
+	odom.timestamp_sample = _mavlink_timesync.sync_stamp(odom_in.time_usec);
+
+	const matrix::Vector3f odom_in_p(odom_in.p_local[0], odom_in.p_local[1], odom_in.p_local[2]);
+
+	// position x/y/z (m)
+	if (odom_in_p.isAllFinite()) {
+		// NED local tangent frame (x: North, y: East, z: Down) with origin fixed relative to earth.
+		odom.pose_frame = vehicle_odometry_s::POSE_FRAME_NED;
+		odom_in_p.copyTo(odom.position);
+	}
+
+	// q: the quaternion of the ODOMETRY msg represents a rotation from body frame to a local frame
+	if (matrix::Quatf(odom_in.q).isAllFinite()) {
+
+		odom.q[0] = odom_in.q[0];
+		odom.q[1] = odom_in.q[1];
+		odom.q[2] = odom_in.q[2];
+		odom.q[3] = odom_in.q[3];
+	}
+
+	const matrix::Vector3f odom_in_v(odom_in.v_local[0], odom_in.v_local[1], odom_in.v_local[2]);
+
+	// velocity vx/vy/vz (m/s)
+	if (odom_in_v.isAllFinite()) {
+		// NED local tangent frame (x: North, y: East, z: Down) with origin fixed relative to earth.
+		odom.velocity_frame = vehicle_odometry_s::VELOCITY_FRAME_NED;
+		odom_in_v.copyTo(odom.velocity);
+	}
+
+	odom.reset_counter = 0;
+	if (odom_in.is_valid > 1) {
+		odom.quality = 50;
+	} else {
+		odom.quality = 0;
+	}
+	// PX4_INFO("radar_vel: %.2f, %.2f, %.2f", (double)odom.velocity[0], (double)odom.velocity[1], (double)odom.velocity[2]);
+	odom.timestamp = hrt_absolute_time();
+	_radar_odometry_pub.publish(odom);
+	// _visual_odometry_pub.publish(odom);
 }
 
 void

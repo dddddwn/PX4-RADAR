@@ -28,4 +28,4 @@ uint8 reset_counter
 int8 quality
 
 # TOPICS vehicle_odometry vehicle_mocap_odometry vehicle_visual_odometry
-# TOPICS estimator_odometry
+# TOPICS estimator_odometry vehicle_radar_odometry

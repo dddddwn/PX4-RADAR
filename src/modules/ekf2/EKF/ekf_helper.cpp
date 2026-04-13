@@ -269,6 +269,16 @@ void Ekf::get_ekf_vel_accuracy(float *ekf_evh, float *ekf_evv) const
 		}
 #endif // CONFIG_EKF2_EXTERNAL_VISION
 
+#if defined(CONFIG_EKF2_EXTERNAL_RADAR)
+		if (_control_status.flags.er_pos) {
+			vel_err_conservative = math::max(vel_err_conservative, Vector2f(_aid_src_er_pos.innovation).norm());
+		}
+
+		if (_control_status.flags.er_vel) {
+			vel_err_conservative = math::max(vel_err_conservative, Vector2f(_aid_src_er_vel.innovation).norm());
+		}
+#endif // CONFIG_EKF2_EXTERNAL_RADAR
+
 		hvel_err = math::max(hvel_err, vel_err_conservative);
 	}
 
@@ -424,6 +434,18 @@ void Ekf::get_innovation_test_status(uint16_t &status, float &mag, float &vel, f
 	}
 #endif // CONFIG_EKF2_EXTERNAL_VISION
 
+#if defined(CONFIG_EKF2_EXTERNAL_RADAR)
+	if (_control_status.flags.er_vel) {
+		float er_vel = sqrtf(Vector3f(_aid_src_er_vel.test_ratio).max());
+		vel = math::max(vel, er_vel, FLT_MIN);
+	}
+
+	if (_control_status.flags.er_pos) {
+		float er_pos = sqrtf(Vector2f(_aid_src_er_pos.test_ratio).max());
+		pos = math::max(pos, er_pos, FLT_MIN);
+	}
+#endif // CONFIG_EKF2_EXTERNAL_RADAR
+
 #if defined(CONFIG_EKF2_OPTICAL_FLOW)
 	if (isOnlyActiveSourceOfHorizontalAiding(_control_status.flags.opt_flow)) {
 		float of_vel = sqrtf(Vector2f(_aid_src_optical_flow.test_ratio).max());
@@ -462,6 +484,13 @@ void Ekf::get_innovation_test_status(uint16_t &status, float &mag, float &vel, f
 		n_hgt_sources++;
 	}
 #endif // CONFIG_EKF2_EXTERNAL_VISION
+
+#if defined(CONFIG_EKF2_EXTERNAL_RADAR)
+	if (_control_status.flags.er_hgt) {
+		hgt_sum += sqrtf(_aid_src_er_hgt.test_ratio);
+		n_hgt_sources++;
+	}
+#endif // CONFIG_EKF2_EXTERNAL_RADAR
 
 	if (n_hgt_sources > 0) {
 		hgt = math::max(hgt_sum / static_cast<float>(n_hgt_sources), FLT_MIN);
@@ -585,7 +614,8 @@ void Ekf::updateDeadReckoningStatus()
 
 void Ekf::updateHorizontalDeadReckoningstatus()
 {
-	const bool velPosAiding = (_control_status.flags.gps || _control_status.flags.ev_pos || _control_status.flags.ev_vel || _control_status.flags.aux_gpos)
+	const bool velPosAiding = (_control_status.flags.gps || _control_status.flags.ev_pos || _control_status.flags.ev_vel || _control_status.flags.er_pos
+				|| _control_status.flags.er_vel || _control_status.flags.aux_gpos)
 				  && (isRecent(_time_last_hor_pos_fuse, _params.no_aid_timeout_max)
 				      || isRecent(_time_last_hor_vel_fuse, _params.no_aid_timeout_max));
 
@@ -725,6 +755,14 @@ void Ekf::resetQuatStateYaw(float yaw, float yaw_variance)
 		_ev_q_error_filt.reset(ev_q_error_updated);
 	}
 #endif // CONFIG_EKF2_EXTERNAL_VISION
+
+#if defined(CONFIG_EKF2_EXTERNAL_RADAR)
+	// update ER attitude error filter
+	if (_er_q_error_initialized) {
+		const Quatf er_q_error_updated = (q_error * _er_q_error_filt.getState()).normalized();
+		_er_q_error_filt.reset(er_q_error_updated);
+	}
+#endif // CONFIG_EKF2_EXTERNAL_RADAR
 
 	// record the state change
 	if (_state_reset_status.reset_count.quat == _state_reset_count_prev.quat) {

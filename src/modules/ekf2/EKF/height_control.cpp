@@ -281,7 +281,7 @@ Likelihood Ekf::estimateInertialNavFallingLikelihood() const
 		float innov_var{0.f};
 		bool failed_min{false};
 		bool failed_lim{false};
-	} checks[6] {};
+	} checks[8] {};
 
 #if defined(CONFIG_EKF2_BAROMETER)
 	if (_control_status.flags.baro_hgt) {
@@ -315,8 +315,18 @@ Likelihood Ekf::estimateInertialNavFallingLikelihood() const
 	}
 #endif // CONFIG_EKF2_EXTERNAL_VISION
 
+#if defined(CONFIG_EKF2_EXTERNAL_RADAR)
+	if (_control_status.flags.er_hgt) {
+		checks[6] = {ReferenceType::GROUND, _aid_src_er_hgt.innovation, _aid_src_er_hgt.innovation_variance};
+	}
+
+	if (_control_status.flags.er_vel) {
+		checks[7] = {ReferenceType::GROUND, _aid_src_er_vel.innovation[1], _aid_src_er_vel.innovation_variance[1]}; // TODO Fix it
+	}
+#endif // CONFIG_EKF2_EXTERNAL_RADAR
+
 	// Compute the check based on innovation ratio for all the sources
-	for (unsigned i = 0; i < 6; i++) {
+	for (unsigned i = 0; i < 8; i++) {
 		if (checks[i].innov_var < FLT_EPSILON) {
 			continue;
 		}

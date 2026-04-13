@@ -180,6 +180,19 @@ EKF2::EKF2(bool multi_mode, const px4::wq_config_t &config, bool replay_mode):
 	_param_ekf2_ev_pos_y(_params->ev_pos_body(1)),
 	_param_ekf2_ev_pos_z(_params->ev_pos_body(2)),
 #endif // CONFIG_EKF2_EXTERNAL_VISION
+#if defined(CONFIG_EKF2_EXTERNAL_RADAR)
+	_param_ekf2_er_delay(_params->er_delay_ms),
+	_param_ekf2_er_ctrl(_params->er_ctrl),
+	_param_ekf2_er_qmin(_params->er_quality_minimum),
+	_param_ekf2_erp_noise(_params->er_pos_noise),
+	_param_ekf2_erv_noise(_params->er_vel_noise),
+	_param_ekf2_era_noise(_params->er_att_noise),
+	_param_ekf2_erv_gate(_params->er_vel_innov_gate),
+	_param_ekf2_erp_gate(_params->er_pos_innov_gate),
+	_param_ekf2_er_pos_x(_params->er_pos_body(0)),
+	_param_ekf2_er_pos_y(_params->er_pos_body(1)),
+	_param_ekf2_er_pos_z(_params->er_pos_body(2)),
+#endif // CONFIG_EKF2_EXTERNAL_RADAR
 #if defined(CONFIG_EKF2_OPTICAL_FLOW)
 	_param_ekf2_of_ctrl(_params->flow_ctrl),
 	_param_ekf2_of_delay(_params->flow_delay_ms),
@@ -286,6 +299,28 @@ bool EKF2::multi_init(int imu, int mag)
 	}
 
 #endif // CONFIG_EKF2_EXTERNAL_VISION
+
+#if defined(CONFIG_EKF2_EXTERNAL_RADAR)
+	// ER advertise
+	if (_param_ekf2_er_ctrl.get() & static_cast<int32_t>(ErCtrl::VPOS)) {
+		_estimator_aid_src_er_hgt_pub.advertise();
+		_estimator_er_pos_bias_pub.advertise();
+	}
+
+	if (_param_ekf2_er_ctrl.get() & static_cast<int32_t>(ErCtrl::HPOS)) {
+		_estimator_aid_src_er_pos_pub.advertise();
+		_estimator_er_pos_bias_pub.advertise();
+	}
+
+	if (_param_ekf2_ev_ctrl.get() & static_cast<int32_t>(ErCtrl::VEL)) {
+		_estimator_aid_src_er_vel_pub.advertise();
+	}
+
+	if (_param_ekf2_er_ctrl.get() & static_cast<int32_t>(ErCtrl::YAW)) {
+		_estimator_aid_src_er_yaw_pub.advertise();
+	}
+
+#endif // CONFIG_EKF2_EXTERNAL_RADAR
 
 #if defined(CONFIG_EKF2_GNSS)
 
@@ -671,6 +706,8 @@ void EKF2::Run()
 			.vehicle_air_data_timestamp_rel = ekf2_timestamps_s::RELATIVE_TIMESTAMP_INVALID,
 			.vehicle_magnetometer_timestamp_rel = ekf2_timestamps_s::RELATIVE_TIMESTAMP_INVALID,
 			.visual_odometry_timestamp_rel = ekf2_timestamps_s::RELATIVE_TIMESTAMP_INVALID,
+			.radar_odometry_timestamp_rel = ekf2_timestamps_s::RELATIVE_TIMESTAMP_INVALID,
+
 		};
 
 #if defined(CONFIG_EKF2_AIRSPEED)
@@ -685,6 +722,9 @@ void EKF2::Run()
 #if defined(CONFIG_EKF2_EXTERNAL_VISION)
 		UpdateExtVisionSample(ekf2_timestamps);
 #endif // CONFIG_EKF2_EXTERNAL_VISION
+#if defined(CONFIG_EKF2_EXTERNAL_RADAR)
+		UpdateExtRadarSample(ekf2_timestamps);
+#endif // CONFIG_EKF2_EXTERNAL_RADAR
 #if defined(CONFIG_EKF2_OPTICAL_FLOW)
 		UpdateFlowSample(ekf2_timestamps);
 #endif // CONFIG_EKF2_OPTICAL_FLOW
@@ -722,6 +762,7 @@ void EKF2::Run()
 			PublishStates(now);
 			PublishStatus(now);
 			PublishStatusFlags(now);
+			PublishDebugRioVio(now);
 			PublishAidSourceStatus(now);
 
 #if defined(CONFIG_EKF2_BAROMETER)
@@ -735,6 +776,10 @@ void EKF2::Run()
 #if defined(CONFIG_EKF2_EXTERNAL_VISION)
 			PublishEvPosBias(now);
 #endif // CONFIG_EKF2_EXTERNAL_VISION
+
+#if defined(CONFIG_EKF2_EXTERNAL_RADAR)
+			PublishErPosBias(now);
+#endif // CONFIG_EKF2_EXTERNAL_RADAR
 
 #if defined(CONFIG_EKF2_GNSS)
 			PublishGnssHgtBias(now);
@@ -850,6 +895,14 @@ void EKF2::VerifyParams()
 
 #endif // CONFIG_EKF2_EXTERNAL_VISION
 
+#if defined(CONFIG_EKF2_EXTERNAL_RADAR)
+
+	if (_param_ekf2_er_delay.get() > delay_max) {
+		delay_max = _param_ekf2_er_delay.get();
+	}
+
+#endif // CONFIG_EKF2_EXTERNAL_RADAR
+
 	if (delay_max > _param_ekf2_delay_max.get()) {
 		/* EVENT
 		 * @description EKF2_DELAY_MAX({1}ms) is too small compared to the maximum sensor delay ({2})
@@ -897,6 +950,14 @@ void EKF2::PublishAidSourceStatus(const hrt_abstime &timestamp)
 	PublishAidSourceStatus(_ekf.aid_src_ev_vel(), _status_ev_vel_pub_last, _estimator_aid_src_ev_vel_pub);
 	PublishAidSourceStatus(_ekf.aid_src_ev_yaw(), _status_ev_yaw_pub_last, _estimator_aid_src_ev_yaw_pub);
 #endif // CONFIG_EKF2_EXTERNAL_VISION
+
+#if defined(CONFIG_EKF2_EXTERNAL_RADAR)
+	// external radar (ER) hgt/pos/vel/yaw
+	PublishAidSourceStatus(_ekf.aid_src_er_hgt(), _status_er_hgt_pub_last, _estimator_aid_src_er_hgt_pub);
+	PublishAidSourceStatus(_ekf.aid_src_er_pos(), _status_er_pos_pub_last, _estimator_aid_src_er_pos_pub);
+	PublishAidSourceStatus(_ekf.aid_src_er_vel(), _status_er_vel_pub_last, _estimator_aid_src_er_vel_pub);
+	PublishAidSourceStatus(_ekf.aid_src_er_yaw(), _status_er_yaw_pub_last, _estimator_aid_src_er_yaw_pub);
+#endif // CONFIG_EKF2_EXTERNAL_RADAR
 
 #if defined(CONFIG_EKF2_GNSS)
 	// GNSS hgt/pos/vel/yaw
@@ -1044,6 +1105,41 @@ void EKF2::PublishEvPosBias(const hrt_abstime &timestamp)
 	}
 }
 #endif // CONFIG_EKF2_EXTERNAL_VISION
+
+#if defined(CONFIG_EKF2_EXTERNAL_RADAR)
+void EKF2::PublishErPosBias(const hrt_abstime &timestamp)
+{
+	if (_ekf.aid_src_er_hgt().timestamp_sample) {
+
+		estimator_bias3d_s bias{};
+
+		// height
+		BiasEstimator::status bias_est_status[3];
+		bias_est_status[0] = _ekf.getErPosBiasEstimatorStatus(0);
+		bias_est_status[1] = _ekf.getErPosBiasEstimatorStatus(1);
+		bias_est_status[2] = _ekf.getErHgtBiasEstimatorStatus();
+
+		for (int i = 0; i < 3; i++) {
+			bias.bias[i] = bias_est_status[i].bias;
+			bias.bias_var[i] = bias_est_status[i].bias_var;
+
+			bias.innov[i] = bias_est_status[i].innov;
+			bias.innov_var[i] = bias_est_status[i].innov_var;
+			bias.innov_test_ratio[i] = bias_est_status[i].innov_test_ratio;
+		}
+
+		const Vector3f bias_vec{bias.bias};
+
+		if ((bias_vec - _last_er_bias_published).longerThan(0.01f)) {
+			bias.timestamp_sample = _ekf.aid_src_er_hgt().timestamp_sample;
+			bias.timestamp = _replay_mode ? timestamp : hrt_absolute_time();
+			_estimator_er_pos_bias_pub.publish(bias);
+
+			_last_er_bias_published = Vector3f(bias.bias);
+		}
+	}
+}
+#endif // CONFIG_EKF2_EXTERNAL_RADAR
 
 estimator_bias_s EKF2::fillEstimatorBiasMsg(const BiasEstimator::status &status, uint64_t timestamp_sample_us,
 		uint64_t timestamp, uint32_t device_id)
@@ -1247,11 +1343,21 @@ void EKF2::PublishInnovations(const hrt_abstime &timestamp)
 	// External Vision
 	innovations.ev_hvel[0] = _ekf.aid_src_ev_vel().innovation[0];
 	innovations.ev_hvel[1] = _ekf.aid_src_ev_vel().innovation[1];
-	innovations.ev_vvel    = _ekf.aid_src_ev_vel().innovation[2];
+	innovations.ev_vvel    = _ekf.aid_src_ev_vel().innovation[1];
 	innovations.ev_hpos[0] = _ekf.aid_src_ev_pos().innovation[0];
 	innovations.ev_hpos[1] = _ekf.aid_src_ev_pos().innovation[1];
 	innovations.ev_vpos    = _ekf.aid_src_ev_hgt().innovation;
 #endif // CONFIG_EKF2_EXTERNAL_VISION
+
+#if defined(CONFIG_EKF2_EXTERNAL_RADAR)
+	// External Vision
+	innovations.er_hvel[0] = _ekf.aid_src_er_vel().innovation[0];
+	innovations.er_hvel[1] = _ekf.aid_src_er_vel().innovation[1];
+	innovations.er_vvel    = _ekf.aid_src_er_vel().innovation[1];
+	innovations.er_hpos[0] = _ekf.aid_src_er_pos().innovation[0];
+	innovations.er_hpos[1] = _ekf.aid_src_er_pos().innovation[1];
+	innovations.er_vpos    = _ekf.aid_src_er_hgt().innovation;
+#endif // CONFIG_EKF2_EXTERNAL_RADAR
 
 	// Height sensors
 #if defined(CONFIG_EKF2_RANGE_FINDER)
@@ -1347,6 +1453,13 @@ void EKF2::PublishInnovations(const hrt_abstime &timestamp)
 		_preflt_checker.setUsingEvVelAiding(_ekf.control_status_flags().ev_vel);
 		_preflt_checker.setUsingEvHgtAiding(_ekf.control_status_flags().ev_hgt);
 #endif // CONFIG_EKF2_EXTERNAL_VISION
+
+#if defined(CONFIG_EKF2_EXTERNAL_RADAR)
+		_preflt_checker.setUsingErPosAiding(_ekf.control_status_flags().er_pos);
+		_preflt_checker.setUsingErVelAiding(_ekf.control_status_flags().er_vel);
+		_preflt_checker.setUsingErHgtAiding(_ekf.control_status_flags().er_hgt);
+#endif // CONFIG_EKF2_EXTERNAL_RADAR
+
 #if defined(CONFIG_EKF2_BAROMETER)
 		_preflt_checker.setUsingBaroHgtAiding(_ekf.control_status_flags().baro_hgt);
 #endif // CONFIG_EKF2_BAROMETER
@@ -1381,11 +1494,21 @@ void EKF2::PublishInnovationTestRatios(const hrt_abstime &timestamp)
 	// External Vision
 	test_ratios.ev_hvel[0] = _ekf.aid_src_ev_vel().test_ratio[0];
 	test_ratios.ev_hvel[1] = _ekf.aid_src_ev_vel().test_ratio[1];
-	test_ratios.ev_vvel    = _ekf.aid_src_ev_vel().test_ratio[2];
+	test_ratios.ev_vvel    = _ekf.aid_src_ev_vel().test_ratio[1]; // TODO Fix it
 	test_ratios.ev_hpos[0] = _ekf.aid_src_ev_pos().test_ratio[0];
 	test_ratios.ev_hpos[1] = _ekf.aid_src_ev_pos().test_ratio[1];
 	test_ratios.ev_vpos    = _ekf.aid_src_ev_hgt().test_ratio;
 #endif // CONFIG_EKF2_EXTERNAL_VISION
+
+#if defined(CONFIG_EKF2_EXTERNAL_RADAR)
+	// External Radar
+	test_ratios.er_hvel[0] = _ekf.aid_src_er_vel().test_ratio[0];
+	test_ratios.er_hvel[1] = _ekf.aid_src_er_vel().test_ratio[1];
+	test_ratios.er_vvel    = _ekf.aid_src_er_vel().test_ratio[1]; // TODO Fix it
+	test_ratios.er_hpos[0] = _ekf.aid_src_er_pos().test_ratio[0];
+	test_ratios.er_hpos[1] = _ekf.aid_src_er_pos().test_ratio[1];
+	test_ratios.er_vpos    = _ekf.aid_src_er_hgt().test_ratio;
+#endif // CONFIG_EKF2_EXTERNAL_RADAR
 
 	// Height sensors
 #if defined(CONFIG_EKF2_RANGE_FINDER)
@@ -1478,11 +1601,21 @@ void EKF2::PublishInnovationVariances(const hrt_abstime &timestamp)
 	// External Vision
 	variances.ev_hvel[0] = _ekf.aid_src_ev_vel().innovation_variance[0];
 	variances.ev_hvel[1] = _ekf.aid_src_ev_vel().innovation_variance[1];
-	variances.ev_vvel    = _ekf.aid_src_ev_vel().innovation_variance[2];
+	variances.ev_vvel    = _ekf.aid_src_ev_vel().innovation_variance[1]; // TODO Fix it
 	variances.ev_hpos[0] = _ekf.aid_src_ev_pos().innovation_variance[0];
 	variances.ev_hpos[1] = _ekf.aid_src_ev_pos().innovation_variance[1];
 	variances.ev_vpos    = _ekf.aid_src_ev_hgt().innovation_variance;
 #endif // CONFIG_EKF2_EXTERNAL_VISION
+
+#if defined(CONFIG_EKF2_EXTERNAL_RADAR)
+	// External Radar
+	variances.er_hvel[0] = _ekf.aid_src_er_vel().innovation_variance[0];
+	variances.er_hvel[1] = _ekf.aid_src_er_vel().innovation_variance[1];
+	variances.er_vvel    = _ekf.aid_src_er_vel().innovation_variance[1]; // TODO Fix it
+	variances.er_hpos[0] = _ekf.aid_src_er_pos().innovation_variance[0];
+	variances.er_hpos[1] = _ekf.aid_src_er_pos().innovation_variance[1];
+	variances.er_vpos    = _ekf.aid_src_er_hgt().innovation_variance;
+#endif // CONFIG_EKF2_EXTERNAL_RADAR
 
 	// Height sensors
 #if defined(CONFIG_EKF2_RANGE_FINDER)
@@ -1892,6 +2025,10 @@ void EKF2::PublishStatusFlags(const hrt_abstime &timestamp)
 		status_flags.cs_ev_pos                = _ekf.control_status_flags().ev_pos;
 		status_flags.cs_ev_yaw                = _ekf.control_status_flags().ev_yaw;
 		status_flags.cs_ev_hgt                = _ekf.control_status_flags().ev_hgt;
+		status_flags.cs_er_pos                = _ekf.control_status_flags().er_pos;
+		status_flags.cs_er_yaw                = _ekf.control_status_flags().er_yaw;
+		status_flags.cs_er_hgt                = _ekf.control_status_flags().er_hgt;
+		status_flags.cs_er_vel                = _ekf.control_status_flags().er_vel;
 		status_flags.cs_fuse_beta             = _ekf.control_status_flags().fuse_beta;
 		status_flags.cs_mag_field_disturbed   = _ekf.control_status_flags().mag_field_disturbed;
 		status_flags.cs_fixed_wing            = _ekf.control_status_flags().fixed_wing;
@@ -2319,6 +2456,188 @@ bool EKF2::UpdateExtVisionSample(ekf2_timestamps_s &ekf2_timestamps)
 	return new_ev_odom;
 }
 #endif // CONFIG_EKF2_EXTERNAL_VISION
+
+#if defined(CONFIG_EKF2_EXTERNAL_RADAR)
+bool EKF2::UpdateExtRadarSample(ekf2_timestamps_s &ekf2_timestamps)
+{
+	// EKF external radar sample
+	bool new_er_odom = false;
+
+	vehicle_odometry_s er_odom;
+
+	if (_er_odom_sub.update(&er_odom)) {
+
+		extRadarSample er_data{};
+		er_data.pos.setNaN();
+		er_data.vel.setNaN();
+		er_data.quat.setNaN();
+
+		// check for valid velocity data
+		const Vector3f er_odom_vel(er_odom.velocity);
+		const Vector3f er_odom_vel_var(er_odom.velocity_variance);
+
+		if (er_odom_vel.isAllFinite()) {
+			bool velocity_frame_valid = false;
+
+			switch (er_odom.velocity_frame) {
+			case vehicle_odometry_s::VELOCITY_FRAME_NED:
+				er_data.vel_frame = VelocityFrame::LOCAL_FRAME_NED;
+				velocity_frame_valid = true;
+				break;
+
+			case vehicle_odometry_s::VELOCITY_FRAME_FRD:
+				er_data.vel_frame = VelocityFrame::LOCAL_FRAME_FRD;
+				velocity_frame_valid = true;
+				break;
+
+			case vehicle_odometry_s::VELOCITY_FRAME_BODY_FRD:
+				er_data.vel_frame = VelocityFrame::BODY_FRAME_FRD;
+				velocity_frame_valid = true;
+				break;
+			}
+
+			if (velocity_frame_valid) {
+				er_data.vel = er_odom_vel;
+
+				const float erv_noise_var = sq(_param_ekf2_erv_noise.get());
+
+				// velocity measurement error from er_data or parameters
+				if ((_param_ekf2_er_noise_md.get() == 0) && er_odom_vel_var.isAllFinite()) {
+
+					er_data.velocity_var(0) = fmaxf(erv_noise_var, er_odom_vel_var(0));
+					er_data.velocity_var(1) = fmaxf(erv_noise_var, er_odom_vel_var(1));
+					er_data.velocity_var(2) = fmaxf(erv_noise_var, er_odom_vel_var(2));
+
+				} else {
+					er_data.velocity_var.setAll(erv_noise_var);
+				}
+
+				new_er_odom = true;
+
+				// -------- debug: integrate RIO pos from velocity (NED only) --------
+				if (er_odom.velocity_frame == vehicle_odometry_s::VELOCITY_FRAME_NED) {
+
+					const hrt_abstime t_us = er_odom.timestamp_sample;
+
+					// init baseline if needed
+					if (!_debug_rio_pos_valid) {
+						const Vector3f pos0{_ekf.getPosition()};
+
+						if (pos0.isAllFinite()) {
+							_debug_rio_pos = pos0;
+							_debug_rio_pos_valid = true;
+							_debug_rio_int_last_us = t_us;
+						}
+
+					} else {
+
+						if ((_debug_rio_int_last_us > 0) && (t_us > _debug_rio_int_last_us)) {
+							float dt = (t_us - _debug_rio_int_last_us) * 1e-6f;
+
+							// clamp dt to [10ms, 200ms]
+							dt = constrain(dt, 0.01f, 0.2f);
+
+							// integrate
+							_debug_rio_pos += er_odom_vel * dt;
+						}
+
+						// always update last timestamp
+						_debug_rio_int_last_us = t_us;
+					}
+				}
+				// -----------------------------------------------------------------
+			}
+		}
+
+		// check for valid position data
+		const Vector3f er_odom_pos(er_odom.position);
+		const Vector3f er_odom_pos_var(er_odom.position_variance);
+
+		if (er_odom_pos.isAllFinite()) {
+			bool position_frame_valid = false;
+
+			switch (er_odom.pose_frame) {
+			case vehicle_odometry_s::POSE_FRAME_NED:
+				er_data.pos_frame = PositionFrame::LOCAL_FRAME_NED;
+				position_frame_valid = true;
+				break;
+
+			case vehicle_odometry_s::POSE_FRAME_FRD:
+				er_data.pos_frame = PositionFrame::LOCAL_FRAME_FRD;
+				position_frame_valid = true;
+				break;
+			}
+
+			if (position_frame_valid) {
+				er_data.pos = er_odom_pos;
+
+				const float erp_noise_var = sq(_param_ekf2_evp_noise.get());
+
+				// position measurement error from er_data or parameters
+				if ((_param_ekf2_ev_noise_md.get() == 0) && er_odom_pos_var.isAllFinite()) {
+
+					er_data.position_var(0) = fmaxf(erp_noise_var, er_odom_pos_var(0));
+					er_data.position_var(1) = fmaxf(erp_noise_var, er_odom_pos_var(1));
+					er_data.position_var(2) = fmaxf(erp_noise_var, er_odom_pos_var(2));
+
+				} else {
+					er_data.position_var.setAll(erp_noise_var);
+				}
+
+				new_er_odom = true;
+			}
+		}
+
+		// check for valid orientation data
+		const Quatf er_odom_q(er_odom.q);
+		const Vector3f er_odom_q_var(er_odom.orientation_variance);
+		const bool non_zero = (fabsf(er_odom_q(0)) > 0.f) || (fabsf(er_odom_q(1)) > 0.f)
+				      || (fabsf(er_odom_q(2)) > 0.f) || (fabsf(er_odom_q(3)) > 0.f);
+		const float eps = 1e-5f;
+		const bool no_element_larger_than_one = (fabsf(er_odom_q(0)) <= 1.f + eps)
+							&& (fabsf(er_odom_q(1)) <= 1.f + eps)
+							&& (fabsf(er_odom_q(2)) <= 1.f + eps)
+							&& (fabsf(er_odom_q(3)) <= 1.f + eps);
+		const bool norm_in_tolerance = fabsf(1.f - er_odom_q.norm()) <= eps;
+
+		const bool orientation_valid = er_odom_q.isAllFinite() && non_zero && no_element_larger_than_one && norm_in_tolerance;
+
+		if (orientation_valid) {
+			er_data.quat = er_odom_q;
+			er_data.quat.normalize();
+
+			// orientation measurement error from er_data or parameters
+			const float era_noise_var = sq(_param_ekf2_era_noise.get());
+
+			if ((_param_ekf2_ev_noise_md.get() == 0) && er_odom_q_var.isAllFinite()) {
+
+				er_data.orientation_var(0) = fmaxf(era_noise_var, er_odom_q_var(0));
+				er_data.orientation_var(1) = fmaxf(era_noise_var, er_odom_q_var(1));
+				er_data.orientation_var(2) = fmaxf(era_noise_var, er_odom_q_var(2));
+
+			} else {
+				er_data.orientation_var.setAll(era_noise_var);
+			}
+
+			new_er_odom = true;
+		}
+
+		// use timestamp from external computer, clocks are synchronized when using MAVROS
+		er_data.time_us = er_odom.timestamp_sample;
+		er_data.reset_counter = er_odom.reset_counter;
+		er_data.quality = er_odom.quality;
+
+		if (new_er_odom)  {
+			_ekf.setExtRadarData(er_data);
+		}
+
+		ekf2_timestamps.radar_odometry_timestamp_rel = (int16_t)((int64_t)er_odom.timestamp / 100 -
+				(int64_t)ekf2_timestamps.timestamp / 100);
+	}
+
+	return new_er_odom;
+}
+#endif // CONFIG_EKF2_EXTERNAL_RADAR
 
 #if defined(CONFIG_EKF2_OPTICAL_FLOW)
 bool EKF2::UpdateFlowSample(ekf2_timestamps_s &ekf2_timestamps)

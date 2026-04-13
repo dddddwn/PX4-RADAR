@@ -67,11 +67,12 @@ using math::Utilities::updateYawInRotMat;
 
 // maximum sensor intervals in usec
 static constexpr uint64_t BARO_MAX_INTERVAL     = 200e3;  ///< Maximum allowable time interval between pressure altitude measurements (uSec)
-static constexpr uint64_t EV_MAX_INTERVAL       = 200e3;  ///< Maximum allowable time interval between external vision system measurements (uSec)
+static constexpr uint64_t EV_MAX_INTERVAL       = 1000e3;  ///< Maximum allowable time interval between external vision system measurements (uSec)
 static constexpr uint64_t GNSS_MAX_INTERVAL     = 500e3;  ///< Maximum allowable time interval between GNSS measurements (uSec)
 static constexpr uint64_t GNSS_YAW_MAX_INTERVAL = 1500e3; ///< Maximum allowable time interval between GNSS yaw measurements (uSec)
 static constexpr uint64_t RNG_MAX_INTERVAL      = 200e3;  ///< Maximum allowable time interval between range finder measurements (uSec)
 static constexpr uint64_t MAG_MAX_INTERVAL      = 500e3;  ///< Maximum allowable time interval between magnetic field measurements (uSec)
+static constexpr uint64_t ER_MAX_INTERVAL       = 200e3;  ///< Maximum allowable time interval between external radar system measurements (uSec)
 
 // bad accelerometer detection and mitigation
 static constexpr uint64_t BADACC_PROBATION = 10e6; ///< Period of time that accel data declared bad must continuously pass checks to be declared good again (uSec)
@@ -118,13 +119,15 @@ enum class HeightSensor : uint8_t {
 	GNSS  = 1,
 	RANGE = 2,
 	EV    = 3,
-	UNKNOWN  = 4
+	ER    = 4,
+	UNKNOWN  = 5
 };
 
 enum class PositionSensor : uint8_t {
 	UNKNOWN = 0,
 	GNSS    = 1,
 	EV      = 2,
+	ER      = 3,
 };
 
 enum class ImuCtrl : uint8_t {
@@ -147,6 +150,13 @@ enum class RngCtrl : uint8_t {
 };
 
 enum class EvCtrl : uint8_t {
+	HPOS = (1<<0),
+	VPOS = (1<<1),
+	VEL  = (1<<2),
+	YAW  = (1<<3)
+};
+
+enum class ErCtrl : uint8_t {
 	HPOS = (1<<0),
 	VPOS = (1<<1),
 	VEL  = (1<<2),
@@ -231,6 +241,22 @@ struct extVisionSample {
 	int8_t     quality{};     ///< quality indicator between 0 and 100
 };
 #endif // CONFIG_EKF2_EXTERNAL_VISION
+
+#if defined(CONFIG_EKF2_EXTERNAL_RADAR)
+struct extRadarSample {
+	uint64_t    time_us{};     ///< timestamp of the measurement (uSec)
+	Vector3f    pos{};         ///< XYZ position in external radar's local reference frame (m) - Z must be aligned with down axis
+	Vector3f    vel{};         ///< FRD velocity in reference frame defined in vel_frame variable (m/sec) - Z must be aligned with down axis
+	Quatf       quat{};        ///< quaternion defining rotation from body to earth frame
+	Vector3f    position_var{};    ///< XYZ position variances (m**2)
+	Vector3f    velocity_var{};    ///< XYZ velocity variances ((m/sec)**2)
+	Vector3f    orientation_var{}; ///< orientation variance (rad**2)
+	PositionFrame pos_frame = PositionFrame::LOCAL_FRAME_FRD;
+	VelocityFrame vel_frame = VelocityFrame::BODY_FRAME_FRD;
+	uint8_t     reset_counter{};
+	int8_t     quality{};     ///< quality indicator between 0 and 100
+};
+#endif // CONFIG_EKF2_EXTERNAL_RADAR
 
 #if defined(CONFIG_EKF2_DRAG_FUSION)
 struct dragSample {
@@ -437,6 +463,22 @@ struct parameters {
 	Vector3f ev_pos_body{};                 ///< xyz position of VI-sensor focal point in body frame (m)
 #endif // CONFIG_EKF2_EXTERNAL_VISION
 
+#if defined(CONFIG_EKF2_EXTERNAL_RADAR)
+	// vision position fusion
+	int32_t er_ctrl{0};
+	float er_delay_ms{175.0f};              ///< off-board vision measurement delay relative to the IMU (mSec)
+
+	float er_vel_noise{0.1f};               ///< minimum allowed observation noise for ER velocity fusion (m/sec)
+	float er_pos_noise{0.1f};               ///< minimum allowed observation noise for ER position fusion (m)
+	float er_att_noise{0.1f};               ///< minimum allowed observation noise for ER attitude fusion (rad/sec)
+	int32_t er_quality_minimum{0};          ///< radar minimum acceptable quality integer
+	float er_vel_innov_gate{3.0f};          ///< radar velocity fusion innovation consistency gate size (STD)
+	float er_pos_innov_gate{5.0f};          ///< radar position fusion innovation consistency gate size (STD)
+	float er_hgt_bias_nsd{0.13f};           ///< process noise for radar height bias estimation (m/s/sqrt(Hz))
+
+	Vector3f er_pos_body{};                 ///< xyz position of radar sensor focal point in body frame (m)
+#endif // CONFIG_EKF2_EXTERNAL_RADAR
+
 #if defined(CONFIG_EKF2_GRAVITY_FUSION)
 	// gravity fusion
 	float gravity_noise{1.0f};              ///< accelerometer measurement gaussian noise (m/s**2)
@@ -592,7 +634,13 @@ union filter_control_status_u {
 		uint64_t mag                     : 1; ///< 35 - true if 3-axis magnetometer measurement fusion (mag states only) is intended
 		uint64_t ev_yaw_fault            : 1; ///< 36 - true when the EV heading has been declared faulty and is no longer being used
 		uint64_t mag_heading_consistent  : 1; ///< 37 - true when the heading obtained from mag data is declared consistent with the filter
-		uint64_t aux_gpos                : 1;
+		uint64_t aux_gpos                : 1; ///< 38
+		uint64_t er_pos                  : 1; ///< 39 - true when local position data fusion from external radar is intended
+		uint64_t er_yaw                  : 1; ///< 40 - true when yaw data from external radar measurements fusion is intended
+		uint64_t er_hgt                  : 1; ///< 41 - true when height data from external radar measurements is being fused
+		uint64_t er_vel                  : 1; ///< 42 - true when local frame velocity data fusion from external radar measurements is intended
+		uint64_t er_yaw_fault            : 1; ///< 43 - true when the ER heading has been declared faulty and is no longer being used
+
 
 	} flags;
 	uint64_t value;
@@ -648,6 +696,12 @@ union information_event_status_u {
 		bool reset_hgt_to_rng           : 1; ///< 15 - true when the vertical position state is reset to the rng measurement
 		bool reset_hgt_to_ev            : 1; ///< 16 - true when the vertical position state is reset to the ev measurement
 		bool reset_pos_to_ext_obs       : 1; ///< 17 - true when horizontal position was reset to an external observation while deadreckoning
+		bool reset_hgt_to_er            : 1; ///< 18 - true when the vertical position state is reset to the er measurement
+		bool reset_pos_to_radar         : 1; ///< 19 - true when the position states are reset to the radar system measurement
+		bool reset_vel_to_radar         : 1; ///< 20 - true when the velocity states are reset to the radar system measurement
+		bool starting_radar_pos_fusion  : 1; ///< 21 - true when the filter starts using radar system position measurements to correct the state estimates
+		bool starting_radar_vel_fusion  : 1; ///< 22 - true when the filter starts using radar system velocity measurements to correct the state estimates
+		bool starting_radar_yaw_fusion  : 1; ///< 23 - true when the filter starts using radar system yaw  measurements to correct the state estimates
 	} flags;
 	uint32_t value;
 };
@@ -667,6 +721,8 @@ union warning_event_status_u {
 		bool vision_data_stopped                : 1; ///< 9 - true when the vision system data has stopped for a significant time period
 		bool emergency_yaw_reset_mag_stopped    : 1; ///< 10 - true when the filter has detected bad magnetometer data, has reset the yaw to anothter source of data and has stopped further use of the magnetometer data
 		bool emergency_yaw_reset_gps_yaw_stopped: 1; ///< 11 - true when the filter has detected bad GNSS yaw data, has reset the yaw to anothter source of data and has stopped further use of the GNSS yaw data
+		bool radar_data_stopped                 : 1; ///< 12 - true when the radar system data has stopped for a significant time period
+
 	} flags;
 	uint32_t value;
 };

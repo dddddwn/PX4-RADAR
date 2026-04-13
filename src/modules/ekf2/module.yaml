@@ -112,6 +112,16 @@ parameters:
       unit: ms
       reboot_required: true
       decimal: 1
+    EKF2_ER_DELAY:
+      description:
+        short: Radar Position Estimator delay relative to IMU measurements
+      type: float
+      default: 0
+      min: 0
+      max: 300
+      unit: ms
+      reboot_required: true
+      decimal: 1
     EKF2_AVEL_DELAY:
       description:
         short: Auxiliary Velocity Estimate (e.g from a landing target) delay relative
@@ -580,6 +590,20 @@ parameters:
       default: 3
       min: 0
       max: 3
+    EKF2_ER_CTRL:
+      description:
+        short: External RADAR sensor aiding
+        long: 'Set bits in the following positions to enable: 0 : Horizontal position
+          fusion 1 : Vertical position fusion 2 : 3D velocity fusion 3 : Yaw'
+      type: bitmask
+      bit:
+        0: Horizontal position
+        1: Vertical position
+        2: 3D velocity
+        3: Yaw
+      default: 4
+      min: 0
+      max: 15
     EKF2_NOAID_TOUT:
       description:
         short: Maximum lapsed time from last fusion of measurements that constrain
@@ -674,6 +698,56 @@ parameters:
     EKF2_EVA_NOISE:
       description:
         short: Measurement noise for vision angle observations used to lower bound
+          or replace the uncertainty included in the message
+      type: float
+      default: 0.1
+      min: 0.05
+      unit: rad
+      decimal: 2
+
+    EKF2_ER_NOISE_MD:
+      description:
+        short: External radar (ER) noise mode
+        long: If set to 0 (default) the measurement noise is taken from the radar
+          message and the ER noise parameters are used as a lower bound. If set to
+          1 the observation noise is set from the parameters directly,
+      type: enum
+      values:
+        0: ER reported variance (parameter lower bound)
+        1: ER noise parameters
+      default: 0
+    EKF2_ER_QMIN:
+      description:
+        short: External radar (ER) minimum quality (optional)
+        long: External radar will only be started and fused if the quality metric
+          is above this threshold. The quality metric is a completely optional field
+          provided by some RIO systems.
+      type: int32
+      default: 0
+      min: 0
+      max: 100
+      decimal: 1
+    EKF2_ERP_NOISE:
+      description:
+        short: Measurement noise for radar position observations used to lower bound
+          or replace the uncertainty included in the message
+      type: float
+      default: 0.1
+      min: 0.01
+      unit: m
+      decimal: 2
+    EKF2_ERV_NOISE:
+      description:
+        short: Measurement noise for radar velocity observations used to lower bound
+          or replace the uncertainty included in the message
+      type: float
+      default: 0.1
+      min: 0.01
+      unit: m/s
+      decimal: 2
+    EKF2_ERA_NOISE:
+      description:
+        short: Measurement noise for radar angle observations used to lower bound
           or replace the uncertainty included in the message
       type: float
       default: 0.1
@@ -877,6 +951,30 @@ parameters:
       default: 0.0
       unit: m
       decimal: 3
+    EKF2_ER_POS_X:
+      description:
+        short: X position of Radar sensor focal point in body frame (forward axis with
+          origin relative to vehicle centre of gravity)
+      type: float
+      default: 0.0
+      unit: m
+      decimal: 3
+    EKF2_ER_POS_Y:
+      description:
+        short: Y position of Radar sensor focal point in body frame (right axis with
+          origin relative to vehicle centre of gravity)
+      type: float
+      default: 0.0
+      unit: m
+      decimal: 3
+    EKF2_ER_POS_Z:
+      description:
+        short: Z position of Radar sensor focal point in body frame (down axis with origin
+          relative to vehicle centre of gravity)
+      type: float
+      default: 0.0
+      unit: m
+      decimal: 3
     EKF2_ARSP_THR:
       description:
         short: Airspeed fusion threshold
@@ -1024,6 +1122,26 @@ parameters:
     EKF2_EVP_GATE:
       description:
         short: Gate size for vision position fusion
+        long: Sets the number of standard deviations used by the innovation consistency
+          test.
+      type: float
+      default: 5.0
+      min: 1.0
+      unit: SD
+      decimal: 1
+    EKF2_ERV_GATE:
+      description:
+        short: Gate size for radar velocity estimate fusion
+        long: Sets the number of standard deviations used by the innovation consistency
+          test.
+      type: float
+      default: 3.0
+      min: 1.0
+      unit: SD
+      decimal: 1
+    EKF2_ERP_GATE:
+      description:
+        short: Gate size for radar position fusion
         long: Sets the number of standard deviations used by the innovation consistency
           test.
       type: float

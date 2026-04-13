@@ -67,6 +67,9 @@ EstimatorInterface::~EstimatorInterface()
 #if defined(CONFIG_EKF2_EXTERNAL_VISION)
 	delete _ext_vision_buffer;
 #endif // CONFIG_EKF2_EXTERNAL_VISION
+#if defined(CONFIG_EKF2_EXTERNAL_RADAR)
+	delete _ext_radar_buffer;
+#endif // CONFIG_EKF2_EXTERNAL_RADAR
 #if defined(CONFIG_EKF2_DRAG_FUSION)
 	delete _drag_buffer;
 #endif // CONFIG_EKF2_DRAG_FUSION
@@ -379,6 +382,45 @@ void EstimatorInterface::setExtVisionData(const extVisionSample &evdata)
 }
 #endif // CONFIG_EKF2_EXTERNAL_VISION
 
+#if defined(CONFIG_EKF2_EXTERNAL_RADAR)
+void EstimatorInterface::setExtRadarData(const extRadarSample &erdata)
+{
+	if (!_initialised) {
+		return;
+	}
+
+	// Allocate the required buffer size if not previously done
+	if (_ext_radar_buffer == nullptr) {
+		_ext_radar_buffer = new RingBuffer<extRadarSample>(_obs_buffer_length);
+
+		if (_ext_radar_buffer == nullptr || !_ext_radar_buffer->valid()) {
+			delete _ext_radar_buffer;
+			_ext_radar_buffer = nullptr;
+			printBufferAllocationFailed("radar");
+			return;
+		}
+	}
+
+	// calculate the system time-stamp for the mid point of the integration period
+	const int64_t time_us = erdata.time_us
+				- static_cast<int64_t>(_params.er_delay_ms * 1000)
+				- static_cast<int64_t>(_dt_ekf_avg * 5e5f); // seconds to microseconds divided by 2
+
+	// limit data rate to prevent data being lost
+	if (time_us >= static_cast<int64_t>(_ext_radar_buffer->get_newest().time_us + _min_obs_interval_us)) {
+
+		extRadarSample er_sample_new{erdata};
+		er_sample_new.time_us = time_us;
+
+		_ext_radar_buffer->push(er_sample_new);
+		_time_last_ext_radar_buffer_push = _time_latest_us;
+
+	} else {
+		ECL_WARN("ER data too fast %" PRIi64 " < %" PRIu64 " + %d", time_us, _ext_radar_buffer->get_newest().time_us, _min_obs_interval_us);
+	}
+}
+#endif // CONFIG_EKF2_EXTERNAL_RADAR
+
 #if defined(CONFIG_EKF2_AUXVEL)
 void EstimatorInterface::setAuxVelData(const auxVelSample &auxvel_sample)
 {
@@ -564,6 +606,8 @@ int EstimatorInterface::getNumberOfActiveHorizontalAidingSources() const
 	       + int(_control_status.flags.ev_pos)
 	       + int(_control_status.flags.ev_vel)
 	       + int(_control_status.flags.aux_gpos)
+	       + int(_control_status.flags.er_pos)
+	       + int(_control_status.flags.er_vel)
 	       // Combined airspeed and sideslip fusion allows sustained wind relative dead reckoning
 	       // and so is treated as a single aiding source.
 	       + int(_control_status.flags.fuse_aspd && _control_status.flags.fuse_beta);
@@ -611,7 +655,8 @@ bool EstimatorInterface::isVerticalVelocityAidingActive() const
 int EstimatorInterface::getNumberOfActiveVerticalVelocityAidingSources() const
 {
 	return int(_control_status.flags.gps)
-	       + int(_control_status.flags.ev_vel);
+	       + int(_control_status.flags.ev_vel)
+	       + int(_control_status.flags.er_vel);
 }
 
 void EstimatorInterface::printBufferAllocationFailed(const char *buffer_name)

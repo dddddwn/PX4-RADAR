@@ -416,6 +416,16 @@ public:
 	const BiasEstimator::status &getEvPosBiasEstimatorStatus(int i) const { return _ev_pos_b_est.getStatus(i); }
 #endif // CONFIG_EKF2_EXTERNAL_VISION
 
+#if defined(CONFIG_EKF2_EXTERNAL_RADAR)
+	const auto &aid_src_er_hgt() const { return _aid_src_er_hgt; }
+	const auto &aid_src_er_pos() const { return _aid_src_er_pos; }
+	const auto &aid_src_er_vel() const { return _aid_src_er_vel; }
+	const auto &aid_src_er_yaw() const { return _aid_src_er_yaw; }
+
+	const BiasEstimator::status &getErHgtBiasEstimatorStatus() const { return _er_hgt_b_est.getStatus(); }
+	const BiasEstimator::status &getErPosBiasEstimatorStatus(int i) const { return _er_pos_b_est.getStatus(i); }
+#endif // CONFIG_EKF2_EXTERNAL_RADAR
+
 #if defined(CONFIG_EKF2_GNSS)
 	void collect_gps(const gnssSample &gps);
 
@@ -637,7 +647,7 @@ private:
 #if defined(CONFIG_EKF2_EXTERNAL_VISION)
 	estimator_aid_source1d_s _aid_src_ev_hgt{};
 	estimator_aid_source2d_s _aid_src_ev_pos{};
-	estimator_aid_source3d_s _aid_src_ev_vel{};
+	estimator_aid_source2d_s _aid_src_ev_vel{};
 	estimator_aid_source1d_s _aid_src_ev_yaw{};
 
 	float _ev_yaw_pred_prev{}; ///< previous value of yaw state used by odometry fusion (m)
@@ -646,6 +656,19 @@ private:
 	uint8_t _nb_ev_vel_reset_available{0};
 	uint8_t _nb_ev_yaw_reset_available{0};
 #endif // CONFIG_EKF2_EXTERNAL_VISION
+
+#if defined(CONFIG_EKF2_EXTERNAL_RADAR)
+	estimator_aid_source1d_s _aid_src_er_hgt{};
+	estimator_aid_source2d_s _aid_src_er_pos{};
+	estimator_aid_source2d_s _aid_src_er_vel{};
+	estimator_aid_source1d_s _aid_src_er_yaw{};
+
+	float _er_yaw_pred_prev{}; ///< previous value of yaw state used by odometry fusion (m)
+
+	uint8_t _nb_er_pos_reset_available{0};
+	uint8_t _nb_er_vel_reset_available{0};
+	uint8_t _nb_er_yaw_reset_available{0};
+#endif // CONFIG_EKF2_EXTERNAL_RADAR
 
 #if defined(CONFIG_EKF2_GNSS)
 	bool _gps_data_ready{false};	///< true when new GPS data has fallen behind the fusion time horizon and is available to be fused
@@ -975,6 +998,23 @@ private:
 	void stopEvYawFusion();
 #endif // CONFIG_EKF2_EXTERNAL_VISION
 
+#if defined(CONFIG_EKF2_EXTERNAL_RADAR)
+	// control fusion of external radar observations
+	void controlExternalRadarFusion();
+	void updateErAttitudeErrorFilter(extRadarSample &er_sample, bool er_reset);
+	void controlErHeightFusion(const extRadarSample &er_sample, const bool common_starting_conditions_passing, const bool er_reset, const bool quality_sufficient, estimator_aid_source1d_s &aid_src);
+	void controlErPosFusion(const extRadarSample &er_sample, const bool common_starting_conditions_passing, const bool er_reset, const bool quality_sufficient, estimator_aid_source2d_s &aid_src);
+	void controlErVelFusion(const extRadarSample &er_sample, const bool common_starting_conditions_passing, const bool er_reset, const bool quality_sufficient, estimator_aid_source2d_s &aid_src);
+	void controlErYawFusion(const extRadarSample &er_sample, const bool common_starting_conditions_passing, const bool er_reset, const bool quality_sufficient, estimator_aid_source1d_s &aid_src);
+
+	void startErPosFusion(const Vector2f &measurement, const Vector2f &measurement_var, estimator_aid_source2d_s &aid_src);
+	void updateErPosFusion(const Vector2f &measurement, const Vector2f &measurement_var, bool quality_sufficient, bool reset, estimator_aid_source2d_s &aid_src);
+	void stopErPosFusion();
+	void stopErHgtFusion();
+	void stopErVelFusion();
+	void stopErYawFusion();
+#endif // CONFIG_EKF2_EXTERNAL_RADAR
+
 #if defined(CONFIG_EKF2_GNSS)
 	// control fusion of GPS observations
 	void controlGpsFusion(const imuSample &imu_delayed);
@@ -1135,6 +1175,13 @@ private:
 	AlphaFilter<Quatf> _ev_q_error_filt{0.001f};
 	bool _ev_q_error_initialized{false};
 #endif // CONFIG_EKF2_EXTERNAL_VISION
+
+#if defined(CONFIG_EKF2_EXTERNAL_RADAR)
+	HeightBiasEstimator _er_hgt_b_est{HeightSensor::ER, _height_sensor_ref};
+	PositionBiasEstimator _er_pos_b_est{PositionSensor::ER, _position_sensor_ref};
+	AlphaFilter<Quatf> _er_q_error_filt{0.001f};
+	bool _er_q_error_initialized{false};
+#endif // CONFIG_EKF2_EXTERNAL_RADAR
 
 	void resetEstimatorAidStatus(estimator_aid_source1d_s &status) const
 	{

@@ -168,6 +168,16 @@ if(CONFIG_EKF2_EXTERNAL_VISION)
 	)
 endif()
 
+if(CONFIG_EKF2_EXTERNAL_RADAR)
+	list(APPEND EKF_SRCS
+		EKF/er_control.cpp
+		EKF/er_height_control.cpp
+		EKF/er_pos_control.cpp
+		EKF/er_vel_control.cpp
+		EKF/er_yaw_control.cpp
+	)
+endif()
+
 if(CONFIG_EKF2_GNSS)
 	list(APPEND EKF_SRCS
 		EKF/gnss_height_control.cpp

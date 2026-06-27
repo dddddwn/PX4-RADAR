@@ -178,6 +178,9 @@ private:
 #if defined(CONFIG_EKF2_EXTERNAL_VISION)
 	void PublishEvPosBias(const hrt_abstime &timestamp);
 #endif // CONFIG_EKF2_EXTERNAL_VISION
+#if defined(CONFIG_EKF2_EXTERNAL_RADAR)
+	void PublishErPosBias(const hrt_abstime &timestamp);
+#endif // CONFIG_EKF2_EXTERNAL_RADAR
 	estimator_bias_s fillEstimatorBiasMsg(const BiasEstimator::status &status, uint64_t timestamp_sample_us,
 					      uint64_t timestamp, uint32_t device_id = 0);
 	void PublishEventFlags(const hrt_abstime &timestamp);
@@ -207,6 +210,9 @@ private:
 #if defined(CONFIG_EKF2_EXTERNAL_VISION)
 	bool UpdateExtVisionSample(ekf2_timestamps_s &ekf2_timestamps);
 #endif // CONFIG_EKF2_EXTERNAL_VISION
+#if defined(CONFIG_EKF2_EXTERNAL_RADAR)
+	bool UpdateExtRadarSample(ekf2_timestamps_s &ekf2_timestamps);
+#endif // CONFIG_EKF2_EXTERNAL_RADAR
 #if defined(CONFIG_EKF2_GNSS)
 	/*
 	 * Calculate filtered WGS84 height from estimated AMSL height
@@ -684,6 +690,32 @@ private:
 		(ParamExtFloat<px4::params::EKF2_EV_POS_Z>)
 		_param_ekf2_ev_pos_z, ///< Z position of VI sensor focal point in body frame (m)
 #endif // CONFIG_EKF2_EXTERNAL_VISION
+#if defined(CONFIG_EKF2_EXTERNAL_RADAR)
+		// radar estimate fusion
+		(ParamExtFloat<px4::params::EKF2_ER_DELAY>)
+		_param_ekf2_er_delay, ///< external radar measurement delay relative to the IMU (mSec)
+
+		(ParamExtInt<px4::params::EKF2_ER_CTRL>) _param_ekf2_er_ctrl, ///< external radar (ER) control selection
+		(ParamInt<px4::params::EKF2_ER_NOISE_MD>) _param_ekf2_er_noise_md, ///< determine source of radar observation noise
+		(ParamExtInt<px4::params::EKF2_ER_QMIN>) _param_ekf2_er_qmin,
+		(ParamExtFloat<px4::params::EKF2_ERP_NOISE>)
+		_param_ekf2_erp_noise, ///< default position observation noise for external radar measurements (m)
+		(ParamExtFloat<px4::params::EKF2_ERV_NOISE>)
+		_param_ekf2_erv_noise, ///< default velocity observation noise for external radar measurements (m/s)
+		(ParamExtFloat<px4::params::EKF2_ERA_NOISE>)
+		_param_ekf2_era_noise, ///< default angular observation noise for external radar measurements (rad)
+		(ParamExtFloat<px4::params::EKF2_ERV_GATE>)
+		_param_ekf2_erv_gate, ///< external radar velocity innovation consistency gate size (STD)
+		(ParamExtFloat<px4::params::EKF2_ERP_GATE>)
+		_param_ekf2_erp_gate, ///< external radar position innovation consistency gate size (STD)
+
+		(ParamExtFloat<px4::params::EKF2_ER_POS_X>)
+		_param_ekf2_er_pos_x, ///< X position of radar sensor focal point in body frame (m)
+		(ParamExtFloat<px4::params::EKF2_ER_POS_Y>)
+		_param_ekf2_er_pos_y, ///< Y position of radar sensor focal point in body frame (m)
+		(ParamExtFloat<px4::params::EKF2_ER_POS_Z>)
+		_param_ekf2_er_pos_z, ///< Z position of radar sensor focal point in body frame (m)
+#endif // CONFIG_EKF2_EXTERNAL_RADAR
 #if defined(CONFIG_EKF2_OPTICAL_FLOW)
 		// optical flow fusion
 		(ParamExtInt<px4::params::EKF2_OF_CTRL>)

@@ -647,7 +647,7 @@ private:
 #if defined(CONFIG_EKF2_EXTERNAL_VISION)
 	estimator_aid_source1d_s _aid_src_ev_hgt{};
 	estimator_aid_source2d_s _aid_src_ev_pos{};
-	estimator_aid_source2d_s _aid_src_ev_vel{};
+	estimator_aid_source3d_s _aid_src_ev_vel{};
 	estimator_aid_source1d_s _aid_src_ev_yaw{};
 
 	float _ev_yaw_pred_prev{}; ///< previous value of yaw state used by odometry fusion (m)

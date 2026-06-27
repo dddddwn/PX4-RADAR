@@ -301,6 +301,7 @@ bool EKF2::multi_init(int imu, int mag)
 #endif // CONFIG_EKF2_EXTERNAL_VISION
 
 #if defined(CONFIG_EKF2_EXTERNAL_RADAR)
+
 	// ER advertise
 	if (_param_ekf2_er_ctrl.get() & static_cast<int32_t>(ErCtrl::VPOS)) {
 		_estimator_aid_src_er_hgt_pub.advertise();
@@ -312,7 +313,7 @@ bool EKF2::multi_init(int imu, int mag)
 		_estimator_er_pos_bias_pub.advertise();
 	}
 
-	if (_param_ekf2_ev_ctrl.get() & static_cast<int32_t>(ErCtrl::VEL)) {
+	if (_param_ekf2_er_ctrl.get() & static_cast<int32_t>(ErCtrl::VEL)) {
 		_estimator_aid_src_er_vel_pub.advertise();
 	}
 
@@ -762,7 +763,6 @@ void EKF2::Run()
 			PublishStates(now);
 			PublishStatus(now);
 			PublishStatusFlags(now);
-			PublishDebugRioVio(now);
 			PublishAidSourceStatus(now);
 
 #if defined(CONFIG_EKF2_BAROMETER)
@@ -1350,10 +1350,10 @@ void EKF2::PublishInnovations(const hrt_abstime &timestamp)
 #endif // CONFIG_EKF2_EXTERNAL_VISION
 
 #if defined(CONFIG_EKF2_EXTERNAL_RADAR)
-	// External Vision
+	// External Radar
 	innovations.er_hvel[0] = _ekf.aid_src_er_vel().innovation[0];
 	innovations.er_hvel[1] = _ekf.aid_src_er_vel().innovation[1];
-	innovations.er_vvel    = _ekf.aid_src_er_vel().innovation[1];
+	innovations.er_vvel    = NAN;
 	innovations.er_hpos[0] = _ekf.aid_src_er_pos().innovation[0];
 	innovations.er_hpos[1] = _ekf.aid_src_er_pos().innovation[1];
 	innovations.er_vpos    = _ekf.aid_src_er_hgt().innovation;
@@ -1504,7 +1504,7 @@ void EKF2::PublishInnovationTestRatios(const hrt_abstime &timestamp)
 	// External Radar
 	test_ratios.er_hvel[0] = _ekf.aid_src_er_vel().test_ratio[0];
 	test_ratios.er_hvel[1] = _ekf.aid_src_er_vel().test_ratio[1];
-	test_ratios.er_vvel    = _ekf.aid_src_er_vel().test_ratio[1]; // TODO Fix it
+	test_ratios.er_vvel    = NAN;
 	test_ratios.er_hpos[0] = _ekf.aid_src_er_pos().test_ratio[0];
 	test_ratios.er_hpos[1] = _ekf.aid_src_er_pos().test_ratio[1];
 	test_ratios.er_vpos    = _ekf.aid_src_er_hgt().test_ratio;
@@ -1611,7 +1611,7 @@ void EKF2::PublishInnovationVariances(const hrt_abstime &timestamp)
 	// External Radar
 	variances.er_hvel[0] = _ekf.aid_src_er_vel().innovation_variance[0];
 	variances.er_hvel[1] = _ekf.aid_src_er_vel().innovation_variance[1];
-	variances.er_vvel    = _ekf.aid_src_er_vel().innovation_variance[1]; // TODO Fix it
+	variances.er_vvel    = NAN;
 	variances.er_hpos[0] = _ekf.aid_src_er_pos().innovation_variance[0];
 	variances.er_hpos[1] = _ekf.aid_src_er_pos().innovation_variance[1];
 	variances.er_vpos    = _ekf.aid_src_er_hgt().innovation_variance;
@@ -2053,6 +2053,7 @@ void EKF2::PublishStatusFlags(const hrt_abstime &timestamp)
 		status_flags.cs_ev_yaw_fault            = _ekf.control_status_flags().ev_yaw_fault;
 		status_flags.cs_mag_heading_consistent  = _ekf.control_status_flags().mag_heading_consistent;
 		status_flags.cs_aux_gpos                = _ekf.control_status_flags().aux_gpos;
+		status_flags.cs_er_yaw_fault            = _ekf.control_status_flags().er_yaw_fault;
 
 		status_flags.fault_status_changes     = _filter_fault_status_changes;
 		status_flags.fs_bad_mag_x             = _ekf.fault_status_flags().bad_mag_x;
@@ -2476,7 +2477,7 @@ bool EKF2::UpdateExtRadarSample(ekf2_timestamps_s &ekf2_timestamps)
 		const Vector3f er_odom_vel(er_odom.velocity);
 		const Vector3f er_odom_vel_var(er_odom.velocity_variance);
 
-		if (er_odom_vel.isAllFinite()) {
+		if (PX4_ISFINITE(er_odom_vel(0)) && PX4_ISFINITE(er_odom_vel(1))) {
 			bool velocity_frame_valid = false;
 
 			switch (er_odom.velocity_frame) {
@@ -2497,55 +2498,24 @@ bool EKF2::UpdateExtRadarSample(ekf2_timestamps_s &ekf2_timestamps)
 			}
 
 			if (velocity_frame_valid) {
-				er_data.vel = er_odom_vel;
+				er_data.vel = Vector3f{er_odom_vel(0), er_odom_vel(1), 0.f};
 
 				const float erv_noise_var = sq(_param_ekf2_erv_noise.get());
 
 				// velocity measurement error from er_data or parameters
-				if ((_param_ekf2_er_noise_md.get() == 0) && er_odom_vel_var.isAllFinite()) {
+				if ((_param_ekf2_er_noise_md.get() == 0)
+				    && PX4_ISFINITE(er_odom_vel_var(0)) && PX4_ISFINITE(er_odom_vel_var(1))) {
 
 					er_data.velocity_var(0) = fmaxf(erv_noise_var, er_odom_vel_var(0));
 					er_data.velocity_var(1) = fmaxf(erv_noise_var, er_odom_vel_var(1));
-					er_data.velocity_var(2) = fmaxf(erv_noise_var, er_odom_vel_var(2));
+					er_data.velocity_var(2) = 0.f;
 
 				} else {
-					er_data.velocity_var.setAll(erv_noise_var);
+					er_data.velocity_var = Vector3f{erv_noise_var, erv_noise_var, 0.f};
 				}
 
 				new_er_odom = true;
 
-				// -------- debug: integrate RIO pos from velocity (NED only) --------
-				if (er_odom.velocity_frame == vehicle_odometry_s::VELOCITY_FRAME_NED) {
-
-					const hrt_abstime t_us = er_odom.timestamp_sample;
-
-					// init baseline if needed
-					if (!_debug_rio_pos_valid) {
-						const Vector3f pos0{_ekf.getPosition()};
-
-						if (pos0.isAllFinite()) {
-							_debug_rio_pos = pos0;
-							_debug_rio_pos_valid = true;
-							_debug_rio_int_last_us = t_us;
-						}
-
-					} else {
-
-						if ((_debug_rio_int_last_us > 0) && (t_us > _debug_rio_int_last_us)) {
-							float dt = (t_us - _debug_rio_int_last_us) * 1e-6f;
-
-							// clamp dt to [10ms, 200ms]
-							dt = constrain(dt, 0.01f, 0.2f);
-
-							// integrate
-							_debug_rio_pos += er_odom_vel * dt;
-						}
-
-						// always update last timestamp
-						_debug_rio_int_last_us = t_us;
-					}
-				}
-				// -----------------------------------------------------------------
 			}
 		}
 
@@ -2571,10 +2541,10 @@ bool EKF2::UpdateExtRadarSample(ekf2_timestamps_s &ekf2_timestamps)
 			if (position_frame_valid) {
 				er_data.pos = er_odom_pos;
 
-				const float erp_noise_var = sq(_param_ekf2_evp_noise.get());
+				const float erp_noise_var = sq(_param_ekf2_erp_noise.get());
 
 				// position measurement error from er_data or parameters
-				if ((_param_ekf2_ev_noise_md.get() == 0) && er_odom_pos_var.isAllFinite()) {
+				if ((_param_ekf2_er_noise_md.get() == 0) && er_odom_pos_var.isAllFinite()) {
 
 					er_data.position_var(0) = fmaxf(erp_noise_var, er_odom_pos_var(0));
 					er_data.position_var(1) = fmaxf(erp_noise_var, er_odom_pos_var(1));
@@ -2609,7 +2579,7 @@ bool EKF2::UpdateExtRadarSample(ekf2_timestamps_s &ekf2_timestamps)
 			// orientation measurement error from er_data or parameters
 			const float era_noise_var = sq(_param_ekf2_era_noise.get());
 
-			if ((_param_ekf2_ev_noise_md.get() == 0) && er_odom_q_var.isAllFinite()) {
+			if ((_param_ekf2_er_noise_md.get() == 0) && er_odom_q_var.isAllFinite()) {
 
 				er_data.orientation_var(0) = fmaxf(era_noise_var, er_odom_q_var(0));
 				er_data.orientation_var(1) = fmaxf(era_noise_var, er_odom_q_var(1));

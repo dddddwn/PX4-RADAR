@@ -54,9 +54,11 @@ void Ekf::controlExternalRadarFusion()
 		bool quality_sufficient = (_params.er_quality_minimum <= 0) || (er_sample.quality >= _params.er_quality_minimum);
 
 		const bool starting_conditions_passing = quality_sufficient
-				&& ((er_sample.time_us - _er_sample_prev.time_us) < EV_MAX_INTERVAL)
-				&& ((_params.er_quality_minimum <= 0) || (_ev_sample_prev.quality >= _params.er_quality_minimum)) // previous quality sufficient
-				&& ((_params.er_quality_minimum <= 0) || (_ext_radar_buffer->get_newest().quality >= _params.er_quality_minimum)) // newest quality sufficient
+				&& ((er_sample.time_us - _er_sample_prev.time_us) < ER_MAX_INTERVAL)
+				&& ((_params.er_quality_minimum <= 0)
+				    || (_er_sample_prev.quality >= _params.er_quality_minimum)) // previous quality sufficient
+				&& ((_params.er_quality_minimum <= 0)
+				    || (_ext_radar_buffer->get_newest().quality >= _params.er_quality_minimum)) // newest quality sufficient
 				&& isNewestSampleRecent(_time_last_ext_radar_buffer_push, ER_MAX_INTERVAL);
 
 		updateErAttitudeErrorFilter(er_sample, er_reset);
@@ -82,7 +84,7 @@ void Ekf::controlExternalRadarFusion()
 		stopErYawFusion();
 		stopErHgtFusion();
 
-		_ev_q_error_initialized = false;
+		_er_q_error_initialized = false;
 
 		_warning_events.flags.radar_data_stopped = true;
 		ECL_WARN("radar data stopped");

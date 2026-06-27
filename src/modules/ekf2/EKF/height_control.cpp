@@ -319,10 +319,6 @@ Likelihood Ekf::estimateInertialNavFallingLikelihood() const
 	if (_control_status.flags.er_hgt) {
 		checks[6] = {ReferenceType::GROUND, _aid_src_er_hgt.innovation, _aid_src_er_hgt.innovation_variance};
 	}
-
-	if (_control_status.flags.er_vel) {
-		checks[7] = {ReferenceType::GROUND, _aid_src_er_vel.innovation[1], _aid_src_er_vel.innovation_variance[1]}; // TODO Fix it
-	}
 #endif // CONFIG_EKF2_EXTERNAL_RADAR
 
 	// Compute the check based on innovation ratio for all the sources

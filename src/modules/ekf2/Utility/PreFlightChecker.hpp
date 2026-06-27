@@ -81,6 +81,8 @@ public:
 #endif // CONFIG_EKF2_OPTICAL_FLOW
 	void setUsingEvPosAiding(bool val) { _is_using_ev_pos_aiding = val; }
 	void setUsingEvVelAiding(bool val) { _is_using_ev_vel_aiding = val; }
+	void setUsingErPosAiding(bool val) { _is_using_er_pos_aiding = val; }
+	void setUsingErVelAiding(bool val) { _is_using_er_vel_aiding = val; }
 
 	void setUsingBaroHgtAiding(bool val) { _is_using_baro_hgt_aiding = val; }
 	void setUsingGpsHgtAiding(bool val) { _is_using_gps_hgt_aiding = val; }
@@ -88,6 +90,7 @@ public:
 	void setUsingRngHgtAiding(bool val) { _is_using_rng_hgt_aiding = val; }
 #endif // CONFIG_EKF2_RANGE_FINDER
 	void setUsingEvHgtAiding(bool val) { _is_using_ev_hgt_aiding = val; }
+	void setUsingErHgtAiding(bool val) { _is_using_er_hgt_aiding = val; }
 
 	bool hasHeadingFailed() const { return _has_heading_failed; }
 	bool hasHorizVelFailed() const { return _has_horiz_vel_failed; }
@@ -157,10 +160,13 @@ private:
 	bool _is_using_gps_aiding{};
 	bool _is_using_ev_pos_aiding{};
 	bool _is_using_ev_vel_aiding{};
+	bool _is_using_er_pos_aiding{};
+	bool _is_using_er_vel_aiding{};
 
 	bool _is_using_baro_hgt_aiding{};
 	bool _is_using_gps_hgt_aiding{};
 	bool _is_using_ev_hgt_aiding{};
+	bool _is_using_er_hgt_aiding{};
 
 	// Low-pass filters for innovation pre-flight checks
 	InnovationLpf _filter_vel_n_innov;	///< Preflight low pass filter N axis velocity innovations (m/sec)
@@ -172,6 +178,7 @@ private:
 	InnovationLpf _filter_baro_hgt_innov;
 	InnovationLpf _filter_gps_hgt_innov;
 	InnovationLpf _filter_ev_hgt_innov;
+	InnovationLpf _filter_er_hgt_innov;
 
 #if defined(CONFIG_EKF2_RANGE_FINDER)
 	bool _is_using_rng_hgt_aiding {};

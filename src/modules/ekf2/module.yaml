@@ -594,12 +594,12 @@ parameters:
       description:
         short: External RADAR sensor aiding
         long: 'Set bits in the following positions to enable: 0 : Horizontal position
-          fusion 1 : Vertical position fusion 2 : 3D velocity fusion 3 : Yaw'
+          fusion 1 : Vertical position fusion 2 : Horizontal velocity fusion 3 : Yaw'
       type: bitmask
       bit:
         0: Horizontal position
         1: Vertical position
-        2: 3D velocity
+        2: Horizontal velocity
         3: Yaw
       default: 4
       min: 0

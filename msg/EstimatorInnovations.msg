@@ -13,6 +13,12 @@ float32    ev_vvel	# vertical external vision velocity innovation (m/sec) and in
 float32[2] ev_hpos	# horizontal external vision position innovation (m) and innovation variance (m**2)
 float32    ev_vpos	# vertical external vision position innovation (m) and innovation variance (m**2)
 
+# External Radar
+float32[2] er_hvel	# horizontal external radar velocity innovation (m/sec) and innovation variance ((m/sec)**2)
+float32    er_vvel	# vertical external radar velocity innovation (m/sec) and innovation variance ((m/sec)**2)
+float32[2] er_hpos	# horizontal external radar position innovation (m) and innovation variance (m**2)
+float32    er_vpos	# vertical external radar position innovation (m) and innovation variance (m**2)
+
 # Height sensors
 float32 rng_vpos	# range sensor height innovation (m) and innovation variance (m**2)
 float32 baro_vpos	# barometer height innovation (m) and innovation variance (m**2)

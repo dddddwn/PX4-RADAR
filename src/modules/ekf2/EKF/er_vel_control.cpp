@@ -49,7 +49,8 @@ void Ekf::controlErVelFusion(const extRadarSample &er_sample, const bool common_
 	// determine if we should use ER velocity aiding
 	bool continuing_conditions_passing = (_params.er_ctrl & static_cast<int32_t>(ErCtrl::VEL))
 					     && _control_status.flags.tilt_align
-					     && er_sample.vel.isAllFinite();
+					     && PX4_ISFINITE(er_sample.vel(0))
+					     && PX4_ISFINITE(er_sample.vel(1));
 
 	// correct velocity for offset relative to IMU
 	const Vector3f pos_offset_body = _params.er_pos_body - _params.imu_pos_body;
@@ -59,12 +60,14 @@ void Ekf::controlErVelFusion(const extRadarSample &er_sample, const bool common_
 	// rotate measurement into correct earth frame if required
 	Vector3f vel{NAN, NAN, NAN};
 	Matrix3f vel_cov{};
+	const Vector3f vel_xy{er_sample.vel(0), er_sample.vel(1), 0.f};
+	const Vector3f velocity_var_xy{er_sample.velocity_var(0), er_sample.velocity_var(1), 0.f};
 
 	switch (er_sample.vel_frame) {
 	case VelocityFrame::LOCAL_FRAME_NED:
 		if (_control_status.flags.yaw_align) {
-			vel = er_sample.vel - vel_offset_earth;
-			vel_cov = matrix::diag(er_sample.velocity_var);
+			vel = vel_xy - vel_offset_earth;
+			vel_cov = matrix::diag(velocity_var_xy);
 
 		} else {
 			continuing_conditions_passing = false;
@@ -75,15 +78,15 @@ void Ekf::controlErVelFusion(const extRadarSample &er_sample, const bool common_
 	case VelocityFrame::LOCAL_FRAME_FRD:
 		if (_control_status.flags.er_yaw) {
 			// using ER frame
-			vel = er_sample.vel - vel_offset_earth;
-			vel_cov = matrix::diag(er_sample.velocity_var);
+			vel = vel_xy - vel_offset_earth;
+			vel_cov = matrix::diag(velocity_var_xy);
 
 		} else {
 			// rotate ER to the EKF reference frame
 			const Dcmf R_er_to_ekf = Dcmf(_er_q_error_filt.getState());
 
-			vel = R_er_to_ekf * er_sample.vel - vel_offset_earth;
-			vel_cov = R_er_to_ekf * matrix::diag(er_sample.velocity_var) * R_er_to_ekf.transpose();
+			vel = R_er_to_ekf * vel_xy - vel_offset_earth;
+			vel_cov = R_er_to_ekf * matrix::diag(velocity_var_xy) * R_er_to_ekf.transpose();
 
 			// increase minimum variance to include ER orientation variance
 			// TODO: do this properly
@@ -97,8 +100,8 @@ void Ekf::controlErVelFusion(const extRadarSample &er_sample, const bool common_
 		break;
 
 	case VelocityFrame::BODY_FRAME_FRD:
-		vel = _R_to_earth * (er_sample.vel - vel_offset_body);
-		vel_cov = _R_to_earth * matrix::diag(er_sample.velocity_var) * _R_to_earth.transpose();
+		vel = _R_to_earth * (vel_xy - vel_offset_body);
+		vel_cov = _R_to_earth * matrix::diag(velocity_var_xy) * _R_to_earth.transpose();
 		break;
 
 	default:
@@ -107,12 +110,14 @@ void Ekf::controlErVelFusion(const extRadarSample &er_sample, const bool common_
 	}
 
 #if defined(CONFIG_EKF2_GNSS)
+
 	// increase minimum variance if GPS active (position reference)
 	if (_control_status.flags.gps) {
 		for (int i = 0; i < 2; i++) {
 			vel_cov(i, i) = math::max(vel_cov(i, i), sq(_params.gps_vel_noise));
 		}
 	}
+
 #endif // CONFIG_EKF2_GNSS
 
 	const Vector2f measurement{vel};
@@ -120,16 +125,16 @@ void Ekf::controlErVelFusion(const extRadarSample &er_sample, const bool common_
 	const Vector2f measurement_var{
 		math::max(vel_cov(0, 0), sq(_params.er_vel_noise), sq(0.01f)),
 		//TODO:vy noise
-		math::max(vel_cov(1, 1), sq(2.0f *_params.er_vel_noise), sq(0.01f))
+		math::max(vel_cov(1, 1), sq(2.0f * _params.er_vel_noise), sq(0.01f))
 	};
 
 	const bool measurement_valid = measurement.isAllFinite() && measurement_var.isAllFinite();
 
 	updateHorizontalVelocityAidSrcStatus(er_sample.time_us,
-				   measurement,                               // observation
-				   measurement_var,                           // observation variance
-				   math::max(_params.er_vel_innov_gate, 1.f), // innovation gate
-				   aid_src);
+					     measurement,                               // observation
+					     measurement_var,                           // observation variance
+					     math::max(_params.er_vel_innov_gate, 1.f), // innovation gate
+					     aid_src);
 
 	if (!measurement_valid) {
 		continuing_conditions_passing = false;
@@ -205,7 +210,8 @@ void Ekf::controlErVelFusion(const extRadarSample &er_sample, const bool common_
 		if (starting_conditions_passing) {
 			// activate fusion, only reset if necessary
 			if (!isHorizontalAidingActive() || yaw_alignment_changed) {
-				ECL_INFO("starting %s fusion, resetting velocity to (%.3f, %.3f)", AID_SRC_NAME, (double)measurement(0), (double)measurement(1));
+				ECL_INFO("starting %s fusion, resetting velocity to (%.3f, %.3f)", AID_SRC_NAME, (double)measurement(0),
+					 (double)measurement(1));
 				_information_events.flags.reset_vel_to_radar = true;
 				resetHorizontalVelocityTo(measurement, measurement_var);
 

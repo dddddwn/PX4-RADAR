@@ -11,4 +11,4 @@ float32[3] innov_var            # innovation variance of the last measurement fu
 float32[3] innov_test_ratio     # normalized innovation squared test ratio
 
 # TOPICS estimator_bias3d
-# TOPICS estimator_ev_pos_bias
+# TOPICS estimator_ev_pos_bias estimator_er_pos_bias

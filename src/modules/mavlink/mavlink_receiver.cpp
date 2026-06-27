@@ -184,9 +184,11 @@ MavlinkReceiver::handle_message(mavlink_message_t *msg)
 		handle_message_odometry(msg);
 		break;
 
+#if defined(MAVLINK_MSG_ID_RADAR_ODOMETRY)
 	case MAVLINK_MSG_ID_RADAR_ODOMETRY:
 		handle_message_radar_odometry(msg);
 		break;
+#endif // MAVLINK_MSG_ID_RADAR_ODOMETRY
 
 	case MAVLINK_MSG_ID_SET_GPS_GLOBAL_ORIGIN:
 		handle_message_set_gps_global_origin(msg);
@@ -1950,6 +1952,7 @@ MavlinkReceiver::handle_message_trajectory_representation_bezier(mavlink_message
 	_trajectory_bezier_pub.publish(trajectory_bezier);
 }
 
+#if defined(MAVLINK_MSG_ID_RADAR_ODOMETRY)
 void
 MavlinkReceiver::handle_message_radar_odometry(mavlink_message_t *msg)
 {
@@ -1988,16 +1991,20 @@ MavlinkReceiver::handle_message_radar_odometry(mavlink_message_t *msg)
 	}
 
 	odom.reset_counter = 0;
+
 	if (odom_in.is_valid > 1) {
 		odom.quality = 50;
+
 	} else {
 		odom.quality = 0;
 	}
+
 	// PX4_INFO("radar_vel: %.2f, %.2f, %.2f", (double)odom.velocity[0], (double)odom.velocity[1], (double)odom.velocity[2]);
 	odom.timestamp = hrt_absolute_time();
 	_radar_odometry_pub.publish(odom);
 	// _visual_odometry_pub.publish(odom);
 }
+#endif // MAVLINK_MSG_ID_RADAR_ODOMETRY
 
 void
 MavlinkReceiver::handle_message_trajectory_representation_waypoints(mavlink_message_t *msg)

@@ -62,7 +62,7 @@ float PreFlightChecker::selectHeadingTestLimit()
 {
 	// Select the max allowed heading innovaton depending on whether we are not aiding navigation using
 	// observations in the NE reference frame and if the vehicle can use GPS course to realign in flight (fixedwing sideslip fusion).
-	const bool is_ne_aiding = _is_using_gps_aiding || _is_using_ev_pos_aiding;
+	const bool is_ne_aiding = _is_using_gps_aiding || _is_using_ev_pos_aiding || _is_using_er_pos_aiding;
 
 	return (is_ne_aiding && !_can_observe_heading_in_flight)
 	       ? _nav_heading_innov_test_lim // more restrictive test limit
@@ -73,9 +73,10 @@ bool PreFlightChecker::preFlightCheckHorizVelFailed(const estimator_innovations_
 {
 	bool has_failed = false;
 
-	if (_is_using_gps_aiding || _is_using_ev_vel_aiding) {
-		const Vector2f vel_ne_innov = Vector2f(fmaxf(fabsf(innov.gps_hvel[0]), fabsf(innov.ev_hvel[0])),
-						       fmaxf(fabsf(innov.gps_hvel[1]), fabsf(innov.ev_hvel[1])));
+	if (_is_using_gps_aiding || _is_using_ev_vel_aiding || _is_using_er_vel_aiding) {
+		const Vector2f vel_ne_innov = Vector2f(
+						      fmaxf(fmaxf(fabsf(innov.gps_hvel[0]), fabsf(innov.ev_hvel[0])), fabsf(innov.er_hvel[0])),
+						      fmaxf(fmaxf(fabsf(innov.gps_hvel[1]), fabsf(innov.ev_hvel[1])), fabsf(innov.er_hvel[1])));
 		Vector2f vel_ne_innov_lpf;
 		vel_ne_innov_lpf(0) = _filter_vel_n_innov.update(vel_ne_innov(0), alpha, _vel_innov_spike_lim);
 		vel_ne_innov_lpf(1) = _filter_vel_e_innov.update(vel_ne_innov(1), alpha, _vel_innov_spike_lim);
@@ -131,6 +132,11 @@ bool PreFlightChecker::preFlightCheckHeightFailed(const estimator_innovations_s 
 		has_failed |= checkInnovFailed(ev_hgt_innov_lpf, innov.ev_vpos, _hgt_innov_test_lim, _hgt_innov_spike_lim);
 	}
 
+	if (_is_using_er_hgt_aiding) {
+		const float er_hgt_innov_lpf = _filter_er_hgt_innov.update(innov.er_vpos, alpha, _hgt_innov_spike_lim);
+		has_failed |= checkInnovFailed(er_hgt_innov_lpf, innov.er_vpos, _hgt_innov_test_lim, _hgt_innov_spike_lim);
+	}
+
 	return has_failed;
 }
 
@@ -152,9 +158,12 @@ void PreFlightChecker::reset()
 	_is_using_gps_aiding = false;
 	_is_using_ev_pos_aiding = false;
 	_is_using_ev_vel_aiding = false;
+	_is_using_er_pos_aiding = false;
+	_is_using_er_vel_aiding = false;
 	_is_using_baro_hgt_aiding = false;
 	_is_using_gps_hgt_aiding = false;
 	_is_using_ev_hgt_aiding = false;
+	_is_using_er_hgt_aiding = false;
 	_has_heading_failed = false;
 	_has_horiz_vel_failed = false;
 	_has_vert_vel_failed = false;
@@ -165,6 +174,7 @@ void PreFlightChecker::reset()
 	_filter_baro_hgt_innov.reset();
 	_filter_gps_hgt_innov.reset();
 	_filter_ev_hgt_innov.reset();
+	_filter_er_hgt_innov.reset();
 	_filter_heading_innov.reset();
 
 #if defined(CONFIG_EKF2_RANGE_FINDER)

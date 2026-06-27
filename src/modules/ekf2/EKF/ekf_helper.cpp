@@ -436,7 +436,7 @@ void Ekf::get_innovation_test_status(uint16_t &status, float &mag, float &vel, f
 
 #if defined(CONFIG_EKF2_EXTERNAL_RADAR)
 	if (_control_status.flags.er_vel) {
-		float er_vel = sqrtf(Vector3f(_aid_src_er_vel.test_ratio).max());
+		float er_vel = sqrtf(Vector2f(_aid_src_er_vel.test_ratio).max());
 		vel = math::max(vel, er_vel, FLT_MIN);
 	}
 
